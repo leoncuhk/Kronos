@@ -17,8 +17,8 @@ import torch
 import yfinance as yf
 from tqdm import trange
 
-# 使用demo目录的model实现
-sys.path.append("../demo/")
+# 使用项目本地的model实现
+sys.path.append("../")
 from model import Kronos, KronosTokenizer, KronosPredictor
 
 # 忽略警告
@@ -101,7 +101,7 @@ def make_prediction(df, predictor):
         volume_preds_list = []
         
         for i in trange(Config["N_PREDICTIONS"], desc="Monte Carlo Sampling"):
-            close_pred, volume_pred = predictor.predict(
+            pred_df = predictor.predict(
                 df=x_df, 
                 x_timestamp=x_timestamp, 
                 y_timestamp=y_timestamp,
@@ -111,8 +111,8 @@ def make_prediction(df, predictor):
                 sample_count=1, 
                 verbose=False
             )
-            close_preds_list.append(close_pred.iloc[:, 0])
-            volume_preds_list.append(volume_pred.iloc[:, 0])
+            close_preds_list.append(pred_df['close'])
+            volume_preds_list.append(pred_df['volume'])
         
         print(f"Main prediction completed in {time.time() - begin_time:.2f} seconds.")
         
