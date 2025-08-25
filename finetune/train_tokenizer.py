@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-import comet_ml
+# import comet_ml  # 禁用comet_ml以避免依赖问题
 
 # Ensure project root is in path
 sys.path.append("../")
