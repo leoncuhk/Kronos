@@ -34,7 +34,7 @@ class BaseConfig:
 
         # Overall time range for data loading from Qlib
         self.dataset_begin_time = "2011-01-01"
-        self.dataset_end_time = '2025-06-05'
+        self.dataset_end_time = '2024-12-31'  # Aligned with test set end
 
         # Sliding window parameters for creating samples
         self.lookback_window = 90
@@ -49,10 +49,11 @@ class BaseConfig:
         # =================================================================
         # Dataset Splitting & Paths
         # =================================================================
-        self.train_time_range = ["2011-01-01", "2022-12-31"]
-        self.val_time_range = ["2022-09-01", "2024-06-30"]
-        self.test_time_range = ["2024-04-01", "2025-06-05"]
-        self.backtest_time_range = ["2024-07-01", "2025-06-05"]
+        # Fixed non-overlapping time ranges to prevent data leakage
+        self.train_time_range = ["2011-01-01", "2022-08-31"]  # Training: ~11.7 years
+        self.val_time_range = ["2022-09-01", "2023-12-31"]    # Validation: 16 months  
+        self.test_time_range = ["2024-01-01", "2024-12-31"]   # Test: 12 months
+        self.backtest_time_range = ["2024-01-01", "2025-06-05"]  # Backtest: overlap with test is OK
 
         # Output paths
         self.dataset_path = str(self.outputs_dir / "data" / "processed_datasets")

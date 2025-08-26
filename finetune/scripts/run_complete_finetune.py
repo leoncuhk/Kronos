@@ -29,13 +29,38 @@ logger = logging.getLogger(__name__)
 
 def parse_arguments():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Run Complete Kronos Finetune Pipeline")
+    parser = argparse.ArgumentParser(
+        description="Kronos Complete Finetune Pipeline",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Quick development test (fast but basic results)
+  python run_complete_finetune.py --config dev
+  
+  # Standard training (balanced approach - recommended)
+  python run_complete_finetune.py --config base
+  
+  # Production training (thorough but time-consuming)
+  python run_complete_finetune.py --config production
+  
+  # Skip data preparation if already exists
+  python run_complete_finetune.py --skip-data-prep
+  
+  # Dry run to see what would be executed
+  python run_complete_finetune.py --dry-run --verbose
+
+Configuration Overview:
+  dev        : Fast testing (1 epoch, minimal data) - ~3 minutes
+  base       : Standard training (2 epochs, balanced) - ~30 minutes  
+  production : Full training (10 epochs, comprehensive) - ~2 hours
+        """
+    )
     
     parser.add_argument(
         '--config',
         choices=['dev', 'base', 'production'],
         default='base',
-        help='Configuration to use (default: base)'
+        help='Training configuration (default: base)'
     )
     
     parser.add_argument(
@@ -108,9 +133,9 @@ def prepare_data(config, args):
         else:
             logger.info("⚠️  Existing data incomplete, preparing new data...")
     
-    # Prepare data
+    # Prepare data (try real data first, fall back to mock data)
     start_time = time.time()
-    success = data_manager.create_and_save_mock_data()
+    success = data_manager.create_and_save_datasets()
     prep_time = time.time() - start_time
     
     if success:

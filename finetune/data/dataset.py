@@ -1,6 +1,7 @@
 import pickle
 import random
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import Dataset
 from ..config import BaseConfig
@@ -20,10 +21,10 @@ class QlibDataset(Dataset):
         ValueError: If `data_type` is not 'train' or 'val'.
     """
 
-    def __init__(self, data_type: str = 'train'):
-        self.config = BaseConfig()
-        if data_type not in ['train', 'val']:
-            raise ValueError("data_type must be 'train' or 'val'")
+    def __init__(self, data_type: str = 'train', config=None, suffix: str = "_real"):
+        self.config = config if config is not None else BaseConfig()
+        if data_type not in ['train', 'val', 'test']:
+            raise ValueError("data_type must be 'train', 'val', or 'test'")
         self.data_type = data_type
 
         # Use a dedicated random number generator for sampling to avoid
@@ -32,14 +33,25 @@ class QlibDataset(Dataset):
 
         # Set paths and number of samples based on the data type.
         if data_type == 'train':
-            self.data_path = f"{self.config.dataset_path}/train_data.pkl"
+            self.data_path = f"{self.config.dataset_path}/train_data{suffix}.pkl"
             self.n_samples = self.config.n_train_iter
-        else:
-            self.data_path = f"{self.config.dataset_path}/val_data.pkl"
+        elif data_type == 'val':
+            self.data_path = f"{self.config.dataset_path}/val_data{suffix}.pkl"
             self.n_samples = self.config.n_val_iter
+        else:  # test
+            self.data_path = f"{self.config.dataset_path}/test_data{suffix}.pkl"
+            self.n_samples = getattr(self.config, 'n_test_iter', 1000)  # Default test samples
 
-        with open(self.data_path, 'rb') as f:
-            self.data = pickle.load(f)
+        try:
+            with open(self.data_path, 'rb') as f:
+                self.data = pickle.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Dataset file not found: {self.data_path}\n"
+                f"Please run data preparation first: python run_complete_finetune.py --config {data_type}"
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to load dataset from {self.data_path}: {e}")
 
         self.window = self.config.lookback_window + self.config.predict_window + 1
 
@@ -51,23 +63,61 @@ class QlibDataset(Dataset):
         self.indices = []
         print(f"[{data_type.upper()}] Pre-computing sample indices...")
         for symbol in self.symbols:
-            df = self.data[symbol].reset_index()
+            df = self.data[symbol].copy()
+            
+            # Reset index to ensure we have a proper integer index
+            if not isinstance(df.index, pd.RangeIndex):
+                df = df.reset_index()
+            
             series_len = len(df)
             num_samples = series_len - self.window + 1
 
             if num_samples > 0:
-                # Generate time features and store them directly in the dataframe.
-                df['minute'] = df['datetime'].dt.minute
-                df['hour'] = df['datetime'].dt.hour
-                df['weekday'] = df['datetime'].dt.weekday
-                df['day'] = df['datetime'].dt.day
-                df['month'] = df['datetime'].dt.month
-                # Keep only necessary columns to save memory.
-                self.data[symbol] = df[self.feature_list + self.time_feature_list]
+                # Generate time features if datetime column exists
+                if 'datetime' in df.columns:
+                    try:
+                        df['minute'] = pd.to_datetime(df['datetime']).dt.minute
+                        df['hour'] = pd.to_datetime(df['datetime']).dt.hour
+                        df['weekday'] = pd.to_datetime(df['datetime']).dt.weekday
+                        df['day'] = pd.to_datetime(df['datetime']).dt.day
+                        df['month'] = pd.to_datetime(df['datetime']).dt.month
+                    except Exception as e:
+                        print(f"Warning: Failed to generate time features for {symbol}: {e}")
+                        # Use dummy time features
+                        for feature in self.time_feature_list:
+                            df[feature] = 0
+                elif hasattr(df.index, 'minute'):  # DatetimeIndex
+                    try:
+                        df['minute'] = df.index.minute
+                        df['hour'] = df.index.hour
+                        df['weekday'] = df.index.weekday
+                        df['day'] = df.index.day
+                        df['month'] = df.index.month
+                    except Exception as e:
+                        print(f"Warning: Failed to extract time features from index for {symbol}: {e}")
+                        # Use dummy time features
+                        for feature in self.time_feature_list:
+                            df[feature] = 0
+                else:
+                    # No datetime information available, use dummy features
+                    for feature in self.time_feature_list:
+                        df[feature] = 0
+                
+                # Keep only necessary columns to save memory
+                available_features = [f for f in self.feature_list if f in df.columns]
+                available_time_features = [f for f in self.time_feature_list if f in df.columns]
+                
+                if len(available_features) == 0:
+                    raise ValueError(f"No required features found in data for {symbol}. "
+                                   f"Required: {self.feature_list}, Available: {list(df.columns)}")
+                
+                self.data[symbol] = df[available_features + available_time_features]
 
-                # Add all valid starting indices for this symbol to the global list.
+                # Add all valid starting indices for this symbol to the global list
                 for i in range(num_samples):
                     self.indices.append((symbol, i))
+            else:
+                print(f"Warning: Symbol {symbol} has insufficient data ({series_len} samples, need {self.window})")
 
         # The effective dataset size is the minimum of the configured iterations
         # and the total number of available samples.

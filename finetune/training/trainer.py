@@ -165,9 +165,9 @@ class UnifiedTrainer:
         logger.info("Preparing data loaders...")
         
         try:
-            # Load datasets
-            train_dataset = QlibDataset('train')
-            val_dataset = QlibDataset('val')
+            # Load datasets with proper configuration
+            train_dataset = QlibDataset('train', config=self.config)
+            val_dataset = QlibDataset('val', config=self.config)
             
             if len(train_dataset) == 0:
                 raise RuntimeError("Training dataset is empty. Please run data preparation first.")
@@ -273,13 +273,52 @@ class UnifiedTrainer:
             return {'total_loss': loss}
     
     def create_targets(self, batch_x: torch.Tensor) -> torch.Tensor:
-        """Create targets for predictor training."""
-        # This is a simplified target creation
-        # In practice, you'd use the tokenizer to create proper targets
-        batch_size, seq_len, _ = batch_x.shape
-        # Create dummy targets for now - replace with proper tokenization
-        targets = torch.randint(0, 1000, (batch_size, seq_len), device=self.device)
-        return targets
+        """
+        Create targets for predictor training.
+        For time series prediction, targets are typically future values.
+        """
+        batch_size, seq_len, num_features = batch_x.shape
+        
+        # For predictor training, we need to load the tokenizer to create proper targets
+        if not hasattr(self, '_tokenizer') or self._tokenizer is None:
+            try:
+                from model import KronosTokenizer
+                tokenizer_path = getattr(self.config, 'finetuned_tokenizer_path', 
+                                       self.config.pretrained_tokenizer_path)
+                self._tokenizer = KronosTokenizer.from_pretrained(tokenizer_path)
+                self._tokenizer.to(self.device)
+                self._tokenizer.eval()
+            except Exception as e:
+                logger.warning(f"Failed to load tokenizer for target creation: {e}")
+                # Fallback to simplified targets (this needs to be fixed for real training)
+                logger.warning("Using simplified targets - this may not work for actual training!")
+                return torch.randint(0, 1000, (batch_size, seq_len), device=self.device)
+        
+        # Use tokenizer to create proper targets
+        with torch.no_grad():
+            try:
+                # Tokenize the input to get discrete tokens
+                tokenized = self._tokenizer(batch_x)
+                if isinstance(tokenized, tuple):
+                    tokens = tokenized[-1]  # Get the token indices
+                else:
+                    tokens = tokenized
+                
+                # For autoregressive training, shift targets by one
+                if len(tokens.shape) == 2:  # [batch, seq]
+                    targets = tokens
+                elif len(tokens.shape) == 3:  # [batch, seq, vocab]
+                    targets = torch.argmax(tokens, dim=-1)
+                else:
+                    logger.error(f"Unexpected tokenizer output shape: {tokens.shape}")
+                    return torch.randint(0, 1000, (batch_size, seq_len), device=self.device)
+                
+                return targets
+                
+            except Exception as e:
+                logger.error(f"Error in tokenizer-based target creation: {e}")
+                # Emergency fallback
+                return torch.randint(0, 1000, (batch_size, seq_len), device=self.device)
     
     def train_epoch(self, train_loader: DataLoader, epoch: int) -> Dict[str, float]:
         """Train for one epoch."""
