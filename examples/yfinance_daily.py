@@ -24,11 +24,14 @@ from model import Kronos, KronosTokenizer, KronosPredictor
 # 忽略警告
 warnings.filterwarnings('ignore')
 
+# === 快速配置：修改这里切换不同标的 ===
+TARGET_SYMBOL = 'SPY'      # 支持: 'BTC-USD', 'GC=F', 'SPY', 'AAPL', 'TSLA' 等
+
 # --- 配置：针对日线数据优化 ---
 Config = {
     "REPO_PATH": Path(__file__).parent.resolve(),
     "MODEL_PATH": "../Kronos_model",
-    "SYMBOL": 'BTC-USD',           # YFinance股票代码
+    "SYMBOL": TARGET_SYMBOL,       # 使用上面配置的标的
     "INTERVAL": '1d',              # 日线数据
     "HIST_POINTS": 400,            # 400个交易日历史数据(约1.5年)
     "PRED_HORIZON": 30,            # 预测30天
@@ -191,7 +194,8 @@ def create_plot(hist_df, close_preds_df, volume_preds_df):
         ax.tick_params(axis='x', rotation=45)
 
     fig.tight_layout()
-    chart_path = Config["REPO_PATH"] / 'yfinance_daily_forecast.png'
+    chart_filename = f'yfinance_daily_forecast_{TARGET_SYMBOL.replace("=", "_").replace("-", "_")}.png'
+    chart_path = Config["REPO_PATH"] / chart_filename
     fig.savefig(chart_path, dpi=120)
     plt.show()
     print(f"Chart saved to: {chart_path}")

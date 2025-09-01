@@ -223,7 +223,7 @@ class UnifiedTrainer:
         recon_loss_full = nn.MSELoss()(z, batch_x)
         
         # Total loss (BSQ loss is already computed in the model)
-        total_loss = recon_loss_pre + recon_loss_full + bsq_loss
+        total_loss = (recon_loss_pre + recon_loss_full + bsq_loss) / 2
         
         return {
             'total_loss': total_loss,
